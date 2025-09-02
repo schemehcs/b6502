@@ -5,6 +5,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use bitflags::bitflags;
 use log::{debug, trace};
 use rand::Rng;
 
@@ -120,7 +121,7 @@ struct Machine<'a> {
     acc: u8,
     x: u8,
     y: u8,
-    p: u8,
+    flags: Flags,
     sp: usize,
     pc: usize,
     bpc: usize,
@@ -134,26 +135,17 @@ const BIT7: u8 = 0x80;
 const BIT6: u8 = 0x40;
 const BIT0: u8 = 0x01;
 
-const CARRY_BIT: u8 = 1;
-const CARRY_MASK: u8 = !CARRY_BIT;
-
-const ZERO_BIT: u8 = 1 << 1;
-const ZERO_MASK: u8 = !ZERO_BIT;
-
-const INTERRUPT_DISABLE_BIT: u8 = 1 << 2;
-const INTERRUPT_DISABLE_MASK: u8 = !INTERRUPT_DISABLE_BIT;
-
-const DECIMAL_BIT: u8 = 1 << 3;
-const DECIMAL_MASK: u8 = !DECIMAL_BIT;
-
-const BREAK_BIT: u8 = 1 << 4;
-//const BREAK_MASK: u8 = BREAK_BIT.reverse_bits();
-
-const OVERFLOW_BIT: u8 = 1 << 6;
-const OVERFLOW_MASK: u8 = !OVERFLOW_BIT;
-
-const NEGATIVE_BIT: u8 = 1 << 7;
-const NEGATIVE_MASK: u8 = !NEGATIVE_BIT;
+bitflags! {
+    pub struct Flags: u8 {
+        const CARRY = 0b0000_0001;
+        const ZERO = 0b0000_0010;
+        const INTERRUPT_DISABLE = 0b0000_0100;
+        const DECIMAL = 0b0000_1000;
+        const BREAK = 0b0001_0000;
+        const OVERFLOW = 0b0100_0000;
+        const NEGATIVE = 0b1000_0000;
+    }
+}
 
 const IRQ_VECTOR: usize = 0xFFFE;
 
@@ -173,7 +165,7 @@ impl<'a> Machine<'a> {
             acc: 0,
             x: 0,
             y: 0,
-            p: 0,
+            flags: Flags::empty(),
             sp: 0xff,
             pc: 0,
             bpc: 0,
@@ -207,7 +199,6 @@ impl<'a> Machine<'a> {
         self.acc = 0;
         self.display_buffer = [0; 32 * 3 * 32];
         self.display_dirty = true;
-        self.p = 0;
         self.sp = 0xff;
         self.pc = 0x0;
         self.bpc = 0x0;
@@ -282,48 +273,58 @@ impl<'a> Machine<'a> {
         self.update_zero_and_negative_flags(self.y);
     }
 
+    #[inline]
     fn is_carry(&self) -> bool {
-        self.p & CARRY_BIT != 0
+        self.flags.contains(Flags::CARRY)
     }
 
+    #[inline]
     fn set_carry(&mut self) {
-        self.p |= CARRY_BIT;
+        self.flags.insert(Flags::CARRY);
     }
 
+    #[inline]
     fn cls_carry(&mut self) {
-        self.p &= CARRY_MASK;
+        self.flags.remove(Flags::CARRY);
     }
 
+    #[inline]
     fn is_zero(&self) -> bool {
-        self.p & ZERO_BIT != 0
+        self.flags.contains(Flags::ZERO)
     }
 
+    #[inline]
     fn set_zero(&mut self) {
-        self.p |= ZERO_BIT;
+        self.flags.insert(Flags::ZERO)
     }
 
+    #[inline]
     fn cls_zero(&mut self) {
-        self.p &= ZERO_MASK;
+        self.flags.remove(Flags::ZERO)
     }
 
     //fn is_interrupt_disable(&self) -> bool {
     //    self.p & INTERRUPT_DISABLE_BIT != 0
     //}
 
+    #[inline]
     fn set_interrupt_disable(&mut self) {
-        self.p |= INTERRUPT_DISABLE_BIT;
+        self.flags.insert(Flags::INTERRUPT_DISABLE);
     }
 
+    #[inline]
     fn cls_interrupt_disable(&mut self) {
-        self.p &= INTERRUPT_DISABLE_MASK;
+        self.flags.remove(Flags::INTERRUPT_DISABLE);
     }
 
+    #[inline]
     fn set_decimal(&mut self) {
-        self.p |= DECIMAL_BIT;
+        self.flags.insert(Flags::DECIMAL);
     }
 
+    #[inline]
     fn cls_decimal(&mut self) {
-        self.p &= DECIMAL_MASK;
+        self.flags.remove(Flags::DECIMAL);
     }
 
     /*fn is_break(&self) -> bool {
@@ -338,28 +339,34 @@ impl<'a> Machine<'a> {
         self.p &= BREAK_MASK;
     }*/
 
+    #[inline]
     fn is_overflow(&self) -> bool {
-        self.p & OVERFLOW_BIT != 0
+        self.flags.contains(Flags::OVERFLOW)
     }
 
+    #[inline]
     fn set_overflow(&mut self) {
-        self.p |= OVERFLOW_BIT;
+        self.flags.insert(Flags::OVERFLOW);
     }
 
+    #[inline]
     fn cls_overflow(&mut self) {
-        self.p &= OVERFLOW_MASK;
+        self.flags.remove(Flags::OVERFLOW);
     }
 
+    #[inline]
     fn is_negative(&self) -> bool {
-        self.p & NEGATIVE_BIT != 0
+        self.flags.contains(Flags::NEGATIVE)
     }
 
+    #[inline]
     fn set_negative(&mut self) {
-        self.p |= NEGATIVE_BIT;
+        self.flags.insert(Flags::NEGATIVE);
     }
 
+    #[inline]
     fn cls_negative(&mut self) {
-        self.p &= NEGATIVE_MASK;
+        self.flags.remove(Flags::NEGATIVE);
     }
 
     fn write_memory(&mut self, addr: usize, value: u8) -> anyhow::Result<()> {
@@ -377,9 +384,7 @@ impl<'a> Machine<'a> {
 
     fn read_memory(&self, addr: usize) -> anyhow::Result<u8> {
         match addr {
-            0xFE => {
-                Ok(rand::rng().random_range(1..16))
-            }
+            0xFE => Ok(rand::rng().random_range(1..16)),
             other => {
                 if self.check_addr(other) {
                     Ok(self.memory[other])
@@ -408,12 +413,14 @@ impl<'a> Machine<'a> {
         self.stack_push(self.p)
     }*/
 
-    fn store_flag_with_bits(&mut self, bits: u8) -> anyhow::Result<()> {
-        self.stack_push(self.p | bits)
+    #[inline]
+    fn store_flag_with(&mut self, flags: Flags) -> anyhow::Result<()> {
+        self.stack_push(self.flags.bits() | flags.bits())
     }
 
     fn restore_flag(&mut self) -> anyhow::Result<()> {
-        self.p = self.stack_pop()?;
+        let bits = self.stack_pop()?;
+        self.flags = Flags::from_bits_truncate(bits);
         Ok(())
     }
 
@@ -485,7 +492,11 @@ impl<'a> Machine<'a> {
                     let status = self.step(op)?;
                     debug!(
                         "- acc:{:x}, x:{:x}, y:{:x}, sp:{:x}, p:{:0>8b} -",
-                        self.acc, self.x, self.y, self.sp, self.p
+                        self.acc,
+                        self.x,
+                        self.y,
+                        self.sp,
+                        self.flags.bits()
                     );
                     if matches!(status, Status::Halt) {
                         return Ok(());
@@ -783,7 +794,7 @@ impl<'a> Machine<'a> {
             }
             Brk => {
                 self.store_pc()?;
-                self.store_flag_with_bits(BREAK_BIT)?;
+                self.store_flag_with(Flags::BREAK)?;
                 self.set_interrupt_disable();
                 let addr = self.read_memory_u16(IRQ_VECTOR)? as usize;
                 self.goto(addr)?;
@@ -988,7 +999,7 @@ impl<'a> Machine<'a> {
                 self.advance();
             }
             Rol(mode) => {
-                let carry = if self.is_carry() { 0x1u8 } else { 0x0u8 };
+                let carry = self.carry_bit();
                 if let Accumulator = mode {
                     if is_negative(self.acc) {
                         self.set_carry();
@@ -1011,14 +1022,14 @@ impl<'a> Machine<'a> {
                 }
             }
             Ror(mode) => {
-                let carry: u8 = if self.is_carry() { BIT7 } else { 0 };
+                let high_bit: u8 = if self.is_carry() { BIT7 } else { 0 };
                 if let Accumulator = mode {
                     if self.acc & BIT0 == BIT0 {
                         self.set_carry();
                     } else {
                         self.cls_carry();
                     }
-                    self.set_acc((self.acc >> 1) | carry);
+                    self.set_acc((self.acc >> 1) | high_bit);
                 } else if let Address(addr) = self.get_operand(mode)? {
                     let mem_val = self.read_memory(addr)?;
                     if mem_val & BIT0 == BIT0 {
@@ -1026,7 +1037,7 @@ impl<'a> Machine<'a> {
                     } else {
                         self.cls_carry();
                     }
-                    let new_val = (mem_val >> 1) | carry;
+                    let new_val = (mem_val >> 1) | high_bit;
                     self.write_memory(addr, new_val)?;
                     self.update_zero_and_negative_flags(new_val);
                 } else {
@@ -1087,7 +1098,7 @@ impl<'a> Machine<'a> {
                 self.advance();
             }
             Php => {
-                self.store_flag_with_bits(BREAK_BIT)?;
+                self.store_flag_with(Flags::BREAK)?;
                 self.advance();
             }
             Plp => {
