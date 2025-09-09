@@ -1,6 +1,6 @@
 use std::{
     fmt::Display,
-    ops::Range,
+    //ops::Range,
     thread::sleep,
     time::{Duration, Instant},
 };
@@ -28,7 +28,6 @@ struct Cli {
 
     #[arg(long, short, default_value_t = 100)]
     clock_micros: u64,
-
 }
 
 fn color(byte: u8) -> Color {
@@ -173,6 +172,7 @@ impl<'a> Machine<'a> {
         }
     }
 
+    /*
     fn dump_memory(&self, r: Range<usize>) -> anyhow::Result<()> {
         let per_row = 16;
         let mut row_cursor = 0;
@@ -191,6 +191,7 @@ impl<'a> Machine<'a> {
 
         Ok(())
     }
+    */
 
     fn reset(&mut self) {
         self.x = 0;
