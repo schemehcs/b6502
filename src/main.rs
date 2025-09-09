@@ -26,11 +26,9 @@ struct Cli {
     #[arg(value_name = "cartridge")]
     cartridge: Option<path::PathBuf>,
 
-    #[arg(long, short, default_value_t = 1000)]
+    #[arg(long, short, default_value_t = 100)]
     clock_micros: u64,
 
-    #[arg(long, short, default_value = "chip8.log")]
-    log_file: path::PathBuf,
 }
 
 fn color(byte: u8) -> Color {
